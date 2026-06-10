@@ -8,33 +8,46 @@
 
 ### Issue
 
-**[py-vetlog-calendar #110 — List all surgeries from the past 7 days](https://github.com/josdem/py-vetlog-calendar/issues/110)**
+**[astroid #600 — numpy: add brain tips for `numpy.fromfile`](https://github.com/pylint-dev/astroid/issues/600)**
 
-Project: [josdem/py-vetlog-calendar](https://github.com/josdem/py-vetlog-calendar)
+Project: [pylint-dev/astroid](https://github.com/pylint-dev/astroid)
 Language: Python
-Label: `good first issue`, `help wanted`, `enhancement`
+Label: `numpy`
 
 ---
 
 ### Problem Summary
 
-`py-vetlog-calendar` is a Python tool that reads a veterinary clinic's Google Calendar and performs tasks like listing pets with pending vaccinations. Currently, there is no way to see which surgeries occurred in the last 7 days. The issue asks for a `list_surgeries` method to be added to `calendar.py` that filters calendar events from the past week where the event title contains "Surgery" (English) or "Cirugia" (Spanish), and prints them. Without this feature, clinic staff have no automated way to pull a weekly surgery report from the calendar. "Fixed" means: a working method exists, it correctly filters by title keyword and date range, and tests verify both behaviors.
+`astroid` is the Python AST framework that powers pylint and other static analysis tools. It uses "brain plugins" — files in `astroid/brain/` — to teach its type inference engine how to handle external libraries like numpy. Currently, `numpy.fromfile` is not recognized by astroid's inference: calls to `np.fromfile(...)` cannot be resolved to their correct return type (`numpy.ndarray`). The fix is to add a brain tip entry for `fromfile` in `astroid/brain/brain_numpy_core_multiarray.py`, following the same pattern already used for `zeros`, `ones`, `empty`, and other numpy functions.
 
 ---
 
 ### Why I Chose This Issue
 
-I chose issue #110 in `py-vetlog-calendar` because it is the right size and shape for a first open source contribution as someone still building my Python skills.
+I chose astroid issue #600 because it sits at the intersection of Python static analysis and cybersecurity tooling. Astroid powers pylint, Bandit, and similar SAST tools — accurate type inference in astroid means fewer false positives when those tools scan real-world code for vulnerabilities. That connection to security makes this contribution genuinely relevant to the career I am building.
 
-The task is one clearly-bounded function: read events from a Google Calendar API response, filter by date (past 7 days) and by title keyword ("Surgery" / "Cirugia"), and return or print the results. I can explain the problem in one sentence and I can picture exactly what done looks like. The issue's acceptance criteria name the specific file (`calendar.py`), the specific method (`list_surgeries`), and even which keywords to check — that kind of specificity is rare and valuable for a first contributor.
-
-The project's README shows a clean setup with a single `uv sync` command and a test suite I can run with `uv run pytest tests/unit -v`. There are 9 prior contributors listed in the README, which tells me the maintainer has a track record of accepting and crediting outside PRs. The issue was opened today with no assignee and no competing pull requests, so the path is clear.
-
-I am specifically interested in learning how real-world Python projects handle date arithmetic and filtering over external API data (Google Calendar), which are patterns I will use repeatedly if I go into backend or data engineering work.
+The task is appropriately scoped for a first contribution: one entry added to a dictionary in `brain_numpy_core_multiarray.py` and one test case added to the corresponding test file. The pattern is already established in the same file for a dozen other numpy functions, so the implementation path is clear. The project (pylint-dev) is active and well-maintained, with a CONTRIBUTING.md, a Code of Conduct, and a history of accepting outside PRs. The issue had no assignee at the time I claimed it.
 
 ---
 
-## Phase II — Reproduce & Plan
+### Planned Fix
+
+Add `"fromfile"` to the `METHODS_TO_BE_INFERRED` dictionary in `astroid/brain/brain_numpy_core_multiarray.py`:
+
+```python
+"fromfile": """def fromfile(file, dtype=float, count=-1, sep='', offset=0):
+        return numpy.ndarray([0, 0])""",
+```
+
+Add a corresponding test case in `tests/brain/numpy/test_core_multiarray.py`:
+
+```python
+("fromfile", '"data.bin"'),
+```
+
+---
+
+## Phase II — Understand the Codebase
 
 *(To be filled in during Week 2)*
 
@@ -65,7 +78,3 @@ I am specifically interested in learning how real-world Python projects handle d
 ### PR Summary
 
 ### Maintainer Feedback Log
-
-| Date | Feedback | Response | Status |
-|------|----------|----------|--------|
-|      |          |          |        |
