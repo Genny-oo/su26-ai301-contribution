@@ -1,6 +1,6 @@
 # Open Source Contribution Log — AI301
 
-## Status: Phase I Complete
+## Status: Phase II Complete
 
 ---
 
@@ -47,15 +47,99 @@ Add a corresponding test case in `tests/brain/numpy/test_core_multiarray.py`:
 
 ---
 
-## Phase II — Understand the Codebase
-
-*(To be filled in during Week 2)*
+## Phase II — Reproduce & Plan
 
 ### Local Environment Setup
 
-### Bug Reproduction
+Cloned my fork of pylint-dev/astroid to `~/Desktop/astroid` and set up the development environment:
+
+```bash
+git clone https://github.com/Genny-oo/astroid.git
+cd astroid
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+pip install pytest numpy
+```
+
+Environment: Python 3.14, astroid 4.2.0b3, numpy 2.4.6, pytest 9.0.3, macOS (ARM64). Setup completed without errors.
+
+Working branch: [add-numpy-fromfile-brain-tip](https://github.com/Genny-oo/astroid/tree/add-numpy-fromfile-brain-tip)
+
+---
+
+### Steps to Reproduce
+
+The issue is that `numpy.fromfile` is missing from astroid's brain plugin, so astroid cannot infer its return type.
+
+1. Set up the local dev environment as above and activate the virtual environment.
+2. Run the following Python script from the repo root:
+
+```python
+from astroid import builder
+
+# Demonstrate that fromfile is NOT inferred (the bug)
+node = builder.extract_node("""
+import numpy as np
+func = np.fromfile
+func("data.bin")  #@
+""")
+print("fromfile infers as:", list(node.infer()))
+
+# Demonstrate that zeros IS inferred correctly (the system works for other functions)
+node2 = builder.extract_node("""
+import numpy as np
+func = np.zeros
+func([1, 2])  #@
+""")
+print("zeros infers as:", [i.pytype() for i in node2.infer()])
+```
+
+3. Observe the output:
+
+```
+fromfile infers as: [Uninferable]
+zeros infers as: ['.ndarray']
+```
+
+**Expected:** `fromfile` should infer as `['.ndarray']`, the same as `zeros` and every other numpy function in the brain plugin.
+
+**Actual:** `fromfile` returns `[Uninferable]` — astroid has no knowledge of this function and cannot determine its return type.
+
+---
 
 ### Solution Approach
+
+**Understand:**
+`numpy.fromfile` reads binary or text data from a file and returns a `numpy.ndarray`. It is absent from the `METHODS_TO_BE_INFERRED` dictionary in `astroid/brain/brain_numpy_core_multiarray.py`, which means astroid's inference engine has no stub for it. Any code that calls `np.fromfile(...)` will produce `Uninferable` when analyzed by pylint or other astroid-backed tools.
+
+**Match:**
+The exact same pattern is already implemented for ~20 other numpy functions in the same file. For example:
+
+```python
+"zeros": """def zeros(shape, dtype=float, order='C'):
+        return numpy.ndarray([0, 0])""",
+```
+
+This is the pattern to follow.
+
+**Plan:**
+1. In `astroid/brain/brain_numpy_core_multiarray.py`: add a `"fromfile"` entry to `METHODS_TO_BE_INFERRED` between `"empty"` and `"is_busday"` (alphabetical order), using `numpy.fromfile`'s real signature.
+2. In `tests/brain/numpy/test_core_multiarray.py`: add `("fromfile", '"data.bin"')` to the `numpy_functions_returning_array` tuple.
+3. Run `pytest tests/brain/numpy/test_core_multiarray.py -v` to confirm the new test passes and no existing tests regress.
+
+**Review:**
+Changes follow the existing code conventions exactly — no new imports, no new functions, no structural changes. Commit message will follow the project's imperative style (e.g. `Add brain tip for numpy.fromfile`).
+
+**Evaluate:**
+After the fix, running the reproduction script above should output:
+
+```
+fromfile infers as: ['.ndarray']
+zeros infers as: ['.ndarray']
+```
+
+All existing tests must continue to pass.
 
 ---
 
