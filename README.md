@@ -185,9 +185,28 @@ Commits:
 
 ---
 
+
 ## Phase IV — Submit & Iterate
 
-*(To be filled in during Weeks 4+)*
+### Pull Request
+
+PR Link: https://github.com/pylint-dev/astroid/pull/3121
+
+### Summary of Contribution
+
+This PR adds inference support for `numpy.fromfile` in astroid’s NumPy brain plugin. It fixes an issue where astroid previously returned `Uninferable` when analyzing `np.fromfile(...)`, by adding a missing brain entry so it correctly infers `numpy.ndarray`.
+
+### Issue Reference
+
+Closes #600
+
+### Maintainer Feedback
+
+- Awaiting review
+
+### Status
+
+Submitted — Awaiting review
 
 ### Pull Request
 
