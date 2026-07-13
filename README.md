@@ -306,10 +306,3 @@ A regression test will be added to `tests/brain/test_brain.py` covering the case
 
 ---
 
-### Claim Comment
-
-Posted on [issue #1847](https://github.com/pylint-dev/astroid/issues/1847) on July 13, 2026:
-
-> Hi, I'd like to work on this issue! I've traced the bug to `infer_enum_class` in `astroid/brain/brain_namedtuple_enum.py`. When an enum member's value is `enum.auto()`, `stmt.value` is a `nodes.Call` node (not a `nodes.Const`), so the code falls into the `else` branch and calls `stmt.value.as_string()`, which returns the string `"enum.auto()"`. This string is then used as the return value in the generated stub class, causing pylint to infer the `.value` type as `auto` instead of `int`.
->
-> The fix would be to detect when `stmt.value` is a `nodes.Call` representing `enum.auto()` and substitute an integer (e.g. `1`) so the type is correctly inferred as `int` for `IntEnum` members. I'll open a PR with the fix and a regression test soon.
