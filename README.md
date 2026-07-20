@@ -305,4 +305,16 @@ else:
 A regression test will be added to `tests/brain/test_brain.py` covering the case where an `IntEnum` member assigned via `enum.auto()` correctly infers its `.value` as `int`.
 
 ---
+## Phase II — Reproduce & Plan
 
+### Local Environment Setup
+
+Reused the existing fork and local development workspace at `~/Desktop/PROJECTS/astroid`. Since Cycle 2 focuses on a different subsystem (Standard Library Enums instead of NumPy), I updated the working branch and local dependencies to ensure a clean state:
+
+```bash
+cd ~/Desktop/PROJECTS/astroid
+git checkout main
+git pull upstream main
+git checkout -b fix-enum-auto-type-inference
+pip install -e .
+pip install pytest
