@@ -498,7 +498,7 @@ Branch: [fix-enum-auto-type-inference](https://github.com/Genny-oo/astroid/tree/
 
 ### Pull Request
 
-**PR Link:** *(to be filled in after push)*
+**PR Link:** [pylint-dev/astroid#3202](https://github.com/pylint-dev/astroid/pull/3202)
 
 **Status:** 🔄 Open — awaiting review
 
