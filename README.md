@@ -246,6 +246,10 @@ The fix is now live in pylint-dev/astroid and will ship in astroid 4.2.0. Anyone
 
 Project: [pylint-dev/astroid](https://github.com/pylint-dev/astroid) | Language: Python | Labels: `Brain 🧠`, `Bug 🐛`
 
+Fork: [Genny-oo/astroid](https://github.com/Genny-oo/astroid) | Branch: `fix-enum-auto-type-inference`
+
+Setup Docs: [CONTRIBUTING.md](https://github.com/pylint-dev/astroid/blob/main/CONTRIBUTING.rst) | [README](https://github.com/pylint-dev/astroid/blob/main/README.rst)
+
 ---
 
 ### Problem Summary
@@ -305,19 +309,26 @@ else:
 A regression test will be added to `tests/brain/test_brain.py` covering the case where an `IntEnum` member assigned via `enum.auto()` correctly infers its `.value` as `int`.
 
 ---
-## Phase II — Reproduce & Plan
 
-### Local Environment Setup
+### Acceptance Criteria
 
-Reused the existing fork and local development workspace at `~/Desktop/PROJECTS/astroid`. Since Cycle 2 focuses on a different subsystem (Standard Library Enums instead of NumPy), I updated the working branch and local dependencies to ensure a clean state:
+The fix is complete when all of the following are true:
 
-```bash
-cd ~/Desktop/PROJECTS/astroid
-git checkout main
-git checkout -b fix-enum-auto-type-inference
-pip install -e .
-pip install pytest
-```
+- [ ] Running pylint on code with `enum.auto()` in an `IntEnum` no longer raises a false-positive `E1101` error on `.value`
+- [ ] `Color.RED.value` (where `RED = enum.auto()`) infers as `nodes.Const` with an integer value, not type `auto`
+- [ ] Both `auto()` members and literal-value members in the same enum infer correctly
+- [ ] All existing enum-related tests in `tests/brain/test_brain.py` still pass (no regressions)
+- [ ] New `BrainEnumAutoTest` tests pass
+
+**Files to modify:**
+- `astroid/brain/brain_namedtuple_enum.py` — `infer_enum_class` function, ~line 432
+- `tests/brain/test_brain.py` — add `BrainEnumAutoTest` class
+
+**Related:**
+- Original issue: [#1847](https://github.com/pylint-dev/astroid/issues/1847)
+- Same function previously fixed for namedtuple inference: [brain_namedtuple_enum.py](https://github.com/pylint-dev/astroid/blob/main/astroid/brain/brain_namedtuple_enum.py)
+
+---
 
 ### Claim Comment
 
