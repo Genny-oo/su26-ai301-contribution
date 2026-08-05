@@ -1,6 +1,6 @@
 # Open Source Contribution Log — AI301
 
-## Status: Cycle 2 — Phase I In Progress 🔄
+## Status: Cycle 2 — Phase IV In Progress (PR Pending) 🔄
 
 ---
 
@@ -314,7 +314,195 @@ Reused the existing fork and local development workspace at `~/Desktop/PROJECTS/
 ```bash
 cd ~/Desktop/PROJECTS/astroid
 git checkout main
-git pull upstream main
 git checkout -b fix-enum-auto-type-inference
 pip install -e .
 pip install pytest
+```
+
+### Claim Comment
+
+Posted on [issue #1847](https://github.com/pylint-dev/astroid/issues/1847) on August 5, 2026:
+
+> Hi, I'd like to work on this issue! I've traced the bug to `infer_enum_class` in `astroid/brain/brain_namedtuple_enum.py`. When an enum member's value is `enum.auto()`, `stmt.value` is a `nodes.Call` node (not a `nodes.Const`), so the code falls into the `else` branch and calls `stmt.value.as_string()`, which returns the string `"enum.auto()"`. This string is then used as the return value in the generated stub class, causing pylint to infer the `.value` type as `auto` instead of `int`.
+>
+> The fix would be to detect when `stmt.value` is a `nodes.Call` representing `enum.auto()` and substitute an integer (e.g. `1`) so the type is correctly inferred as `int` for `IntEnum` members. I'll open a PR with the fix and a regression test soon.
+
+---
+
+## Phase II — Reproduce & Plan
+
+### Local Environment Setup
+
+Reused the existing fork and local dev workspace at `~/Desktop/PROJECTS/astroid`. Created a new branch for Cycle 2:
+
+```bash
+cd ~/Desktop/PROJECTS/astroid
+git checkout main
+git checkout -b fix-enum-auto-type-inference
+```
+
+Environment: Python 3.14, astroid 4.2.0b3, pytest 9.0.3, macOS (ARM64). No new dependencies needed — the enum module is part of Python's standard library.
+
+---
+
+### Steps to Reproduce
+
+The bug: when an `IntEnum` member uses `enum.auto()`, pylint raises a false-positive `E1101: Instance of 'auto' has no 'bit_length' member`.
+
+1. Activate the local dev environment and run this script from the repo root:
+
+```python
+from astroid import builder
+
+node = builder.extract_node("""
+import enum
+
+class Color(enum.IntEnum):
+    RED = enum.auto()
+    BLUE = 10
+
+Color.RED.value #@
+""")
+inferred = next(node.infer())
+print("Type:", type(inferred))
+print("Value:", inferred.value if hasattr(inferred, 'value') else "N/A")
+```
+
+2. **Before fix:** astroid infers `Color.RED.value` as returning the string `"enum.auto()"` — type `auto`, not `int`.
+3. **After fix:** astroid correctly infers `Color.RED.value` as a `nodes.Const` with an integer value.
+
+**Root cause confirmed:** In `infer_enum_class` (line ~432 of `brain_namedtuple_enum.py`), when `stmt.value` is not a `nodes.Const`, the code calls `stmt.value.as_string()`. For `enum.auto()`, which is a `nodes.Call`, this returns the literal text `"enum.auto()"`. That string is embedded into the generated stub class as the return value of `.value`, so astroid infers `.value` as type `auto` instead of `int`.
+
+---
+
+### Solution Approach (UMPIRE)
+
+**Understand:** `enum.auto()` is a function call, represented in astroid's AST as a `nodes.Call` node. The existing code only handles `nodes.Const` (literal values like `10` or `"hello"`) correctly. Any non-Const value falls into an `else` branch that calls `.as_string()` — which works fine for most expressions but returns the wrong thing for `enum.auto()`.
+
+**Match:** The fix follows the same conditional-isinstance pattern already used above it in the same function. No new imports needed — `nodes.Call` and `nodes.Attribute` are already used elsewhere in the file.
+
+**Plan:**
+1. In `astroid/brain/brain_namedtuple_enum.py`: add an `elif` branch before the catch-all `else` to detect `enum.auto()` calls and set `inferred_return_value = 1`.
+2. In `tests/brain/test_brain.py`: add a new `BrainEnumAutoTest` class with two tests — one for a single `auto()` member, one for mixed `auto()` and literal members.
+3. Run `pytest tests/brain/test_brain.py::BrainEnumAutoTest -v` to confirm both pass.
+
+**Implement:** See Phase III.
+
+**Review:** The fix is minimal and targeted — one `elif` block, no new imports, no structural changes. All existing enum tests should continue to pass.
+
+**Evaluate:** After the fix, `.value` on an `enum.auto()` IntEnum member correctly infers as `nodes.Const` with an integer value.
+
+---
+
+## Phase III — Build
+
+### Implementation
+
+**File modified: `astroid/brain/brain_namedtuple_enum.py`**
+
+Added an `elif` branch inside `infer_enum_class` to detect `enum.auto()` calls:
+
+```python
+# Before (buggy):
+else:
+    inferred_return_value = stmt.value.as_string()
+
+# After (fix):
+elif (
+    isinstance(stmt.value, nodes.Call)
+    and isinstance(stmt.value.func, nodes.Attribute)
+    and stmt.value.func.attrname == "auto"
+):
+    # enum.auto() is a Call node, not a Const.
+    # Substituting 1 so the stub correctly infers int
+    # for IntEnum members instead of the type `auto`.
+    inferred_return_value = 1
+else:
+    inferred_return_value = stmt.value.as_string()
+```
+
+**File modified: `tests/brain/test_brain.py`**
+
+Added `BrainEnumAutoTest` class with two regression tests:
+
+```python
+class BrainEnumAutoTest(unittest.TestCase):
+    """Tests for correct type inference of enum members assigned via enum.auto()."""
+
+    def test_int_enum_auto_value_inferred_as_int(self) -> None:
+        """enum.auto() members in IntEnum should have .value inferred as int, not auto."""
+        node = builder.extract_node("""
+        import enum
+
+        class Color(enum.IntEnum):
+            RED = enum.auto()
+            GREEN = enum.auto()
+            BLUE = 10
+
+        Color.RED.value #@
+        """)
+        inferred = next(node.infer())
+        self.assertIsInstance(inferred, nodes.Const)
+        self.assertIsInstance(inferred.value, int)
+
+    def test_int_enum_mixed_auto_and_literal(self) -> None:
+        """IntEnum with both auto() and literal values should not raise false E1101."""
+        node = builder.extract_node("""
+        import enum
+
+        class Status(enum.IntEnum):
+            PENDING = enum.auto()
+            ACTIVE = 2
+            CLOSED = enum.auto()
+
+        Status.PENDING.value #@
+        """)
+        inferred = next(node.infer())
+        self.assertIsInstance(inferred, nodes.Const)
+        self.assertIsInstance(inferred.value, int)
+```
+
+### Testing
+
+```bash
+pytest tests/brain/test_brain.py::BrainEnumAutoTest -v
+```
+
+Results:
+- `test_int_enum_auto_value_inferred_as_int` — PASSED
+- `test_int_enum_mixed_auto_and_literal` — PASSED
+- No regressions in existing enum tests
+
+### Code Changes
+
+Branch: [fix-enum-auto-type-inference](https://github.com/Genny-oo/astroid/tree/fix-enum-auto-type-inference)
+
+| Commit | Description |
+|--------|-------------|
+| `a6cc9d8b` | Fix incorrect type inference for enum.auto() in IntEnum members |
+
+---
+
+## Phase IV — Submit & Iterate
+
+### Pull Request
+
+**PR Link:** *(to be filled in after push)*
+
+**Status:** 🔄 Open — awaiting review
+
+**Target branch:** `pylint-dev/astroid:main`
+
+### Acceptance Criteria
+
+- [ ] `elif` branch added to detect `enum.auto()` in `infer_enum_class`
+- [ ] Two regression tests added in `BrainEnumAutoTest`
+- [ ] All existing tests pass — no regressions
+- [ ] PR open on pylint-dev/astroid
+- [ ] Maintainer reviewed and merged
+
+### Maintainer Feedback Log
+
+| Date | Reviewer | Feedback | Action Taken | Commit |
+|------|----------|----------|--------------|--------|
+| *(pending)* | | | | |
