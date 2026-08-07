@@ -516,4 +516,4 @@ Branch: [fix-enum-auto-type-inference](https://github.com/Genny-oo/astroid/tree/
 
 | Date | Reviewer | Feedback | Action Taken | Commit |
 |------|----------|----------|--------------|--------|
-| *(pending)* | | | | |
+| Aug 7, 2026 | @kdelay | 1. Fix doesn't cover `from enum import auto` / `auto()` unqualified form — use `_looks_like()` helper instead. 2. Tests belong in `tests/brain/test_enum.py` not `test_brain.py`. 3. Comment says "correctly infers int" but value `1` is only correct for type, not runtime value for later members. | Used `_looks_like(stmt.value, "auto")` to cover both spellings; moved tests to `EnumBrainTest` in `test_enum.py` and added unqualified `auto()` test; updated comment to clarify type-only inference | `aae66066` |
