@@ -352,7 +352,12 @@ git checkout main
 git checkout -b fix-enum-auto-type-inference
 ```
 
-Environment: Python 3.14, astroid 4.2.0b3, pytest 9.0.3, macOS (ARM64). No new dependencies needed — the enum module is part of Python's standard library.
+Environment: Python 3.14, astroid 4.2.0b3, pytest 9.0.3, macOS (ARM64). No new pip dependencies needed — the enum module is part of Python's standard library.
+
+**Challenges encountered:**
+- The astroid repo had a stale `.git/index.lock` file from a previous session that blocked `git checkout`. Fixed by running `rm -f .git/index.lock .git/HEAD.lock` before switching branches.
+- The existing `.venv` was tied to the Cycle 1 branch. Had to reinstall the package in editable mode (`pip install -e .`) on the new branch to ensure the local astroid version reflected the current source.
+- Initially searched for the bug in `brain_enum.py` (which doesn't exist) before locating the actual enum brain logic in `brain_namedtuple_enum.py` via `grep`.
 
 ---
 
@@ -379,10 +384,13 @@ print("Type:", type(inferred))
 print("Value:", inferred.value if hasattr(inferred, 'value') else "N/A")
 ```
 
-2. **Before fix:** astroid infers `Color.RED.value` as returning the string `"enum.auto()"` — type `auto`, not `int`.
-3. **After fix:** astroid correctly infers `Color.RED.value` as a `nodes.Const` with an integer value.
+2. Observe the output.
 
-**Root cause confirmed:** In `infer_enum_class` (line ~432 of `brain_namedtuple_enum.py`), when `stmt.value` is not a `nodes.Const`, the code calls `stmt.value.as_string()`. For `enum.auto()`, which is a `nodes.Call`, this returns the literal text `"enum.auto()"`. That string is embedded into the generated stub class as the return value of `.value`, so astroid infers `.value` as type `auto` instead of `int`.
+**Expected behavior:** `Color.RED.value` should infer as a `nodes.Const` with an integer value, since `IntEnum` guarantees all `.value` properties are `int`. pylint should not raise any error.
+
+**Actual behavior (before fix):** astroid infers `Color.RED.value` as the string `"enum.auto()"` — type `auto`, not `int`. pylint then raises `E1101: Instance of 'auto' has no 'bit_length' member` on perfectly valid code.
+
+**Root cause:** In `infer_enum_class` (`astroid/brain/brain_namedtuple_enum.py`, line ~432), the code checks if `stmt.value` is a `nodes.Const`. If not, it falls into an `else` branch that calls `stmt.value.as_string()`. For `enum.auto()`, which is a `nodes.Call` node (not a `nodes.Const`), `.as_string()` returns the literal text `"enum.auto()"`. That string is embedded into the generated stub class as the return value of the `.value` property, so astroid infers `.value` as type `auto` instead of `int`.
 
 ---
 
@@ -392,10 +400,12 @@ print("Value:", inferred.value if hasattr(inferred, 'value') else "N/A")
 
 **Match:** The fix follows the same conditional-isinstance pattern already used above it in the same function. No new imports needed — `nodes.Call` and `nodes.Attribute` are already used elsewhere in the file.
 
+**Root cause identified:** `astroid/brain/brain_namedtuple_enum.py`, function `infer_enum_class`, lines 432–433. The `else` branch calls `stmt.value.as_string()` without checking whether `stmt.value` is a `nodes.Call` (i.e., a function call like `enum.auto()`). This is the specific line that needs to change.
+
 **Plan:**
-1. In `astroid/brain/brain_namedtuple_enum.py`: add an `elif` branch before the catch-all `else` to detect `enum.auto()` calls and set `inferred_return_value = 1`.
-2. In `tests/brain/test_brain.py`: add a new `BrainEnumAutoTest` class with two tests — one for a single `auto()` member, one for mixed `auto()` and literal members.
-3. Run `pytest tests/brain/test_brain.py::BrainEnumAutoTest -v` to confirm both pass.
+1. In `astroid/brain/brain_namedtuple_enum.py` (`infer_enum_class`, line ~432): add an `elif` branch using the existing `_looks_like()` helper (defined at line 183) to detect both `enum.auto()` and `auto()` spellings and set `inferred_return_value = 1`.
+2. In `tests/brain/test_enum.py`: add two tests to the existing `EnumBrainTest` class — one for the qualified `enum.auto()` spelling, one for the unqualified `auto()` spelling after `from enum import auto`.
+3. Run `pytest tests/brain/test_enum.py -v` to confirm both new tests pass with no regressions.
 
 **Implement:** See Phase III.
 
